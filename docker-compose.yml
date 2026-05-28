@@ -1,0 +1,38 @@
+# Dev local — lance le worker contre staging Supabase.
+#
+# Prérequis :
+#   - cp .env.example .env  (puis remplir SUPABASE_URL / SERVICE_ROLE_KEY)
+#   - docker-compose up --build
+#
+# GPU local (NVIDIA + nvidia-docker installés) : décommenter la section
+# `deploy.resources.reservations.devices` ci-dessous. Sans GPU le worker
+# tourne en CPU (lent — POC mesuré 0.66× RTF sur T4 ; en CPU prévoir ~5-10×
+# le temps réel).
+
+services:
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: watiir-video-redact:dev
+    container_name: watiir-redact-worker
+    env_file:
+      - .env
+    environment:
+      - PYTHONUNBUFFERED=1
+    volumes:
+      # Persiste le work_dir entre runs pour debug
+      - watiir-work:/tmp/watiir-redact-work
+    restart: unless-stopped
+    # Décommenter pour GPU NVIDIA local :
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
+
+volumes:
+  watiir-work:
+    driver: local

@@ -1,0 +1,42 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+env/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+build/
+dist/
+.coverage
+htmlcov/
+
+# Models (téléchargés au build via models/download.py — pas en VCS)
+models/*.pt
+models/*.onnx
+models/*.engine
+
+# Dev local — vidéos de test (RGPD : jamais commiter)
+inputs/
+outputs/
+*.mp4
+*.mov
+*.mkv
+
+# Secrets / env
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+.DS_Store
+
+# Docker
+.docker/

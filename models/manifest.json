@@ -1,0 +1,40 @@
+{
+  "$schema": "./manifest.schema.json",
+  "version": "0.1.0",
+  "description": "Pinning des modèles ML utilisés par watiir-video-redact V4.0. Toute MAJ exige bump de version + nouvelle entrée commit_hash/sha256.",
+  "face_detector": {
+    "source": "huggingface",
+    "repo_id": "arnabdhar/YOLOv8-Face-Detection",
+    "filename": "model.pt",
+    "revision": "main",
+    "commit_hash": null,
+    "sha256": "37396ac6a9601ab9f5177e4231b09d81cf6f65a7f22db99ec3b36ab63f674e71",
+    "license": "AGPL-3.0",
+    "size_bytes_approx": 6553600,
+    "notes": "POC 2026-05-27 : 851 unique tracks sur 18 min de vidéo parisienne, rappel visuel 100%. commit_hash et sha256 à figer au 1er fetch (cf. models/download.py)."
+  },
+  "license_plate_detector": {
+    "source": "huggingface",
+    "repo_id": "yasirfaizahmed/license-plate-object-detection",
+    "filename": "best.pt",
+    "revision": "main",
+    "commit_hash": null,
+    "sha256": "d06657407970f80f1a12eb9f340661ecd003bbe44ff8feac3d5bc38845f11a94",
+    "license": "AGPL-3.0",
+    "size_bytes_approx": 6543360,
+    "notes": "POC 2026-05-27 : 174 unique plates sur le même corpus, rappel visuel 100% sur plaques FR malgré modèle non-FR-specific. À forker sur un repo interne Dynaminqs pour résilience long terme (le repo HF est communautaire)."
+  },
+  "tracker": {
+    "name": "ByteTrack",
+    "source": "ultralytics-builtin",
+    "config_file": "bytetrack.yaml",
+    "license": "MIT",
+    "notes": "Intégré nativement Ultralytics 8.x via model.track(tracker='bytetrack.yaml')."
+  },
+  "runtime": {
+    "ultralytics": ">=8.3.0,<9.0.0",
+    "opencv": ">=4.10.0,<5.0.0",
+    "python": "3.11",
+    "notes": "Versions exactes figées dans pyproject.toml. ONNX runtime reporté V4.1+ (gain marginal sur GPU L4)."
+  }
+}
