@@ -1,0 +1,6 @@
+[
+  { "name": "livraison", "type": "rectangle", "color": "#ffb000", "attributes": [] },
+  { "name": "pmr",       "type": "rectangle", "color": "#1f77ff", "attributes": [] },
+  { "name": "recharge",  "type": "rectangle", "color": "#2ca02c", "attributes": [] },
+  { "name": "standard",  "type": "rectangle", "color": "#9467bd", "attributes": [] }
+]

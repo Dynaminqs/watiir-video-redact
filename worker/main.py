@@ -32,6 +32,7 @@ from pipeline.detect import (
     GpsRequiredError,
     SpotDetector,
     StubDetector,
+    Yolov8SpotDetector,
     detect_spots,
     parse_gps_log,
 )
@@ -167,10 +168,16 @@ def _load_detector() -> SpotDetector:
     kind = os.environ.get("SPOT_DETECTOR", "stub").lower()
     if kind == "stub":
         return StubDetector()
-    raise RuntimeError(
-        f"SPOT_DETECTOR='{kind}' indisponible en V4.0 — seul 'stub' est fourni. "
-        f"Le détecteur réel est gaté sur le POC modèle (cf. README)."
-    )
+    if kind == "yolov8":
+        checkpoint = os.environ.get("SPOT_DETECTOR_CHECKPOINT")
+        if not checkpoint:
+            raise RuntimeError(
+                "SPOT_DETECTOR=yolov8 requiert SPOT_DETECTOR_CHECKPOINT "
+                "(chemin vers le best.pt validé par le POC — cf. training/README.md)."
+            )
+        model_version = os.environ.get("SPOT_DETECTOR_MODEL_VERSION")
+        return Yolov8SpotDetector(checkpoint, model_version=model_version)
+    raise RuntimeError(f"SPOT_DETECTOR='{kind}' inconnu — valeurs supportées : 'stub', 'yolov8'.")
 
 
 def process_one_detection(

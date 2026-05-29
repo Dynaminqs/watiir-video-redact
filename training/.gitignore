@@ -1,0 +1,11 @@
+# Données et artefacts d'entraînement — JAMAIS commités (volumineux / binaires /
+# potentiellement sensibles avant floutage). Seuls le code et data.yaml le sont.
+raw_videos/
+dataset/
+cvat_export/
+Training/
+runs/
+_data.resolved.yaml
+*.pt
+*.onnx
+!../models/*.pt   # les checkpoints livrés vivent dans models/ (pinned via manifest)

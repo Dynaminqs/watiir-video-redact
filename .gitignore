@@ -20,6 +20,14 @@ models/*.pt
 models/*.onnx
 models/*.engine
 
+# Poids ML (jamais en VCS — base models téléchargés, checkpoints entraînés)
+*.pt
+*.onnx
+*.engine
+
+# Sorties d'entraînement Ultralytics (POC training/)
+runs/
+
 # Dev local — vidéos de test (RGPD : jamais commiter)
 inputs/
 outputs/

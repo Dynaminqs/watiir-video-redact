@@ -151,6 +151,172 @@ class StubDetector:
         ]
 
 
+def spot_kind_from_class_id(class_id: int) -> str:
+    """Mappe un index de classe YOLO sur un `spot_kind`.
+
+    L'ordre DOIT matcher `training/data.yaml` (names: 0..3) et `SPOT_KINDS`.
+    Lève ValueError si l'index est hors plage (modèle incohérent avec le contrat).
+    """
+    try:
+        return SPOT_KINDS[class_id]
+    except (IndexError, TypeError) as exc:
+        raise ValueError(f"class_id={class_id!r} hors du contrat SPOT_KINDS={SPOT_KINDS}") from exc
+
+
+def xyxyn_to_bbox_dict(x1: float, y1: float, x2: float, y2: float) -> dict:
+    """Convertit une box YOLO normalisée (coins xyxy ∈ [0,1]) en dict bbox
+    `{x, y, w, h}` où (x, y) est le coin haut-gauche normalisé (convention
+    alignée sur `StubDetector`). Les valeurs sont clampées dans [0, 1]."""
+    cx1, cx2 = sorted((float(x1), float(x2)))
+    cy1, cy2 = sorted((float(y1), float(y2)))
+    cx1 = min(max(cx1, 0.0), 1.0)
+    cy1 = min(max(cy1, 0.0), 1.0)
+    cx2 = min(max(cx2, 0.0), 1.0)
+    cy2 = min(max(cy2, 0.0), 1.0)
+    return {"x": cx1, "y": cy1, "w": cx2 - cx1, "h": cy2 - cy1}
+
+
+def obb_corners_to_bbox_dict(corners) -> dict:
+    """Boîte orientée (OBB) → bbox axis-aligné `{x, y, w, h}` normalisé et clampé.
+
+    `corners` = les 4 sommets normalisés de l'OBB, séquence de longueur 4 de
+    (x, y) ∈ [0,1] (format ultralytics `obb.xyxyxyxyn`). On expose la boîte
+    ENGLOBANTE axis-alignée pour conserver le contrat `RawDetection.bbox`
+    (le géoréférencement V4.0 est GPS — la forme orientée n'est pas requise en
+    aval ; l'OBB sert uniquement à un fit serré à l'entraînement)."""
+    xs = [min(max(float(p[0]), 0.0), 1.0) for p in corners]
+    ys = [min(max(float(p[1]), 0.0), 1.0) for p in corners]
+    x1, x2 = min(xs), max(xs)
+    y1, y2 = min(ys), max(ys)
+    return {"x": x1, "y": y1, "w": x2 - x1, "h": y2 - y1}
+
+
+class Yolov8SpotDetector:
+    """Détecteur de places fine-tuné (POC modèle, cf. `training/`).
+
+    Modèle YOLOv8-**OBB** (boîtes orientées) : les places en vue oblique sont des
+    quadrilatères en biais, qu'un rectangle axis-aligné couvre mal. Le détecteur
+    expose néanmoins un `RawDetection.bbox` axis-aligné (boîte englobante de
+    l'OBB) pour ne rien changer au contrat aval — l'OBB n'améliore que le fit à
+    l'entraînement/inférence.
+
+    Gaté derrière `SPOT_DETECTOR=yolov8` + un checkpoint explicite : tant qu'aucun
+    `best.pt` validé n'existe, le worker garde `StubDetector` par défaut.
+
+    Stratégie : tracking ByteTrack sur la vidéo floutée (comme le floutage), une
+    seule `RawDetection` émise par `track_id` (la frame de meilleure confiance).
+    Cela évite N détections quasi-dupliquées de la même place sur des frames
+    successives — la modération humaine G affine ensuite.
+
+    `ultralytics` et `cv2` sont importés paresseusement (le chemin `StubDetector`
+    n'a aucune dépendance ML)."""
+
+    def __init__(
+        self,
+        checkpoint_path: Path | str,
+        *,
+        model_version: str | None = None,
+        conf_threshold: float = 0.35,
+        tracker: str = "bytetrack.yaml",
+        frame_stride: int = 5,
+    ) -> None:
+        self.checkpoint_path = Path(checkpoint_path)
+        if not self.checkpoint_path.exists():
+            raise FileNotFoundError(
+                f"checkpoint Yolov8SpotDetector introuvable : {self.checkpoint_path}"
+            )
+        # model_version tracé jusqu'au staging (audit) — défaut dérivé du fichier.
+        self.model_version = model_version or f"yolov8-{self.checkpoint_path.stem}"
+        self.conf_threshold = conf_threshold
+        self.tracker = tracker
+        self.frame_stride = max(1, int(frame_stride))
+        self._model = None  # chargé paresseusement au 1er detect()
+
+    def _ensure_model(self):
+        if self._model is None:
+            from ultralytics import YOLO  # lazy : évite torch pour le chemin stub
+
+            self._model = YOLO(str(self.checkpoint_path))
+        return self._model
+
+    def detect(self, redacted_video: Path) -> list[RawDetection]:
+        import cv2  # lazy
+
+        model = self._ensure_model()
+        cap = cv2.VideoCapture(str(redacted_video))
+        if not cap.isOpened():
+            raise RuntimeError(f"impossible d'ouvrir la vidéo {redacted_video}")
+        fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
+
+        # Garde la meilleure détection par track_id : {tid: RawDetection}.
+        best_by_track: dict[int, RawDetection] = {}
+        # Détections sans track_id (tracker non résolu) gardées telles quelles.
+        untracked: list[RawDetection] = []
+        try:
+            frame_idx = 0
+            while True:
+                ret, frame = cap.read()
+                if not ret:
+                    break
+                if frame_idx % self.frame_stride != 0:
+                    frame_idx += 1
+                    continue
+                ts_ms = int(frame_idx / fps * 1000) if fps > 0 else frame_idx
+                results = model.track(
+                    frame,
+                    persist=True,
+                    tracker=self.tracker,
+                    conf=self.conf_threshold,
+                    verbose=False,
+                )
+                self._collect(results, ts_ms, best_by_track, untracked)
+                frame_idx += 1
+        finally:
+            cap.release()
+
+        return list(best_by_track.values()) + untracked
+
+    @staticmethod
+    def _collect(
+        results,
+        ts_ms: int,
+        best_by_track: dict[int, RawDetection],
+        untracked: list[RawDetection],
+    ) -> None:
+        """Extrait les OBB d'un résultat ultralytics → RawDetection (in-place).
+
+        Modèle OBB : on lit `results[0].obb` (4 coins normalisés) et on dérive le
+        bbox englobant axis-aligné. Pour les détections trackées, ne garde que la
+        meilleure confiance par track_id. Tolérant aux attributs absents."""
+        res = results[0] if results else None
+        obb = getattr(res, "obb", None) if res is not None else None
+        if obb is None or len(obb) == 0:
+            return
+        # Coins normalisés : shape (N, 4, 2).
+        corners = obb.xyxyxyxyn
+        corners = corners.cpu().numpy() if hasattr(corners, "cpu") else corners
+        cls = obb.cls.cpu().numpy() if hasattr(obb.cls, "cpu") else obb.cls
+        conf = obb.conf.cpu().numpy() if hasattr(obb.conf, "cpu") else obb.conf
+        ids = None
+        if getattr(obb, "id", None) is not None:
+            ids = obb.id.cpu().numpy() if hasattr(obb.id, "cpu") else obb.id
+
+        for i in range(len(corners)):
+            det = RawDetection(
+                frame_ts_ms=ts_ms,
+                bbox=obb_corners_to_bbox_dict(corners[i]),
+                spot_kind=spot_kind_from_class_id(int(cls[i])),
+                confidence=float(conf[i]),
+            )
+            if ids is not None:
+                tid = int(ids[i])
+                prev = best_by_track.get(tid)
+                if prev is None or (det.confidence or 0) > (prev.confidence or 0):
+                    best_by_track[tid] = det
+            else:
+                untracked.append(det)
+
+
 def parse_gps_log(raw: bytes | str | None) -> GpsTrack:
     """Parseur GPS tolérant.
 

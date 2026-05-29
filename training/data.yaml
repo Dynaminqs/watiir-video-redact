@@ -1,0 +1,29 @@
+# WATIIR V4 — dataset POC détection de places (TYPE, 4 classes), tâche OBB.
+#
+# Format OBB (boîtes orientées) : chaque ligne de label =
+#   class_id x1 y1 x2 y2 x3 y3 x4 y4   (4 sommets normalisés ∈ [0,1])
+# Export CVAT : « Ultralytics YOLO Oriented Bounding Boxes 1.0 ».
+# Le `names`/ordre ci-dessous reste identique en OBB (data.yaml inchangé sur ce
+# point) ; c'est le modèle (yolov8n-obb.pt) qui fixe la tâche.
+#
+# L'ordre des classes DOIT matcher pipeline.detect.SPOT_KINDS et le mapping
+# spot_kind_from_class_id() :
+#   0 = livraison, 1 = pmr, 2 = recharge, 3 = standard
+# Ne JAMAIS réordonner sans mettre à jour SPOT_KINDS (le contrat d'intégration
+# en dépend : class_id → SPOT_KINDS[class_id]).
+#
+# `path` est relatif au dossier d'exécution de train.py (ou absolu). La
+# structure attendue (générée par prepare_dataset.py + annotation) :
+#   dataset/
+#     images/train/*.jpg   images/val/*.jpg
+#     labels/train/*.txt   labels/val/*.txt   (format YOLO : cls cx cy w h, normalisé)
+
+path: ./dataset
+train: images/train
+val: images/val
+
+names:
+  0: livraison
+  1: pmr
+  2: recharge
+  3: standard
