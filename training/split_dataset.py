@@ -39,6 +39,22 @@ IMG_EXTS = {".jpg", ".jpeg", ".png"}
 CLASS_NAMES = ("livraison", "pmr", "recharge", "standard")
 
 
+def clamp_label(text: str) -> str:
+    """Clampe toutes les coordonnées normalisées d'un label (OBB ou détection)
+    dans [0, 1]. Récupère les annotations dont un coin déborde légèrement de
+    l'image (ex. 1.018) — qu'Ultralytics rejetterait sinon, faisant perdre
+    l'image entière (coûteux pour les classes rares). La 1re colonne (class_id)
+    est laissée intacte. Un texte vide (background) reste vide."""
+    out: list[str] = []
+    for ln in text.splitlines():
+        parts = ln.split()
+        if not parts:
+            continue
+        coords = [f"{min(max(float(v), 0.0), 1.0):.6f}" for v in parts[1:]]
+        out.append(" ".join([parts[0], *coords]))
+    return "\n".join(out) + ("\n" if out else "")
+
+
 def find_image(images_dir: Path, stem: str) -> Path | None:
     for ext in IMG_EXTS:
         p = images_dir / f"{stem}{ext}"
@@ -92,10 +108,15 @@ def main() -> None:
     for i, (img, lbl) in enumerate(pairs):
         split = "val" if i in val_set else "train"
         op(str(img), str(args.out / "images" / split / img.name))
-        op(str(lbl), str(args.out / "labels" / split / lbl.name))
+        # Label : on écrit une version CLAMPÉE [0,1] (récupère les coins en bord
+        # d'image) au lieu de copier brut → évite qu'Ultralytics rejette l'image.
+        raw = lbl.read_text()
+        (args.out / "labels" / split / lbl.name).write_text(clamp_label(raw))
+        if args.move:
+            lbl.unlink()
         counts[split] += 1
-        # Histogramme classes (lecture du label).
-        lines = [ln for ln in lbl.read_text().splitlines() if ln.strip()] if lbl.exists() else []
+        # Histogramme classes (lecture du label brut).
+        lines = [ln for ln in raw.splitlines() if ln.strip()]
         if not lines:
             empty_labels += 1
         for ln in lines:

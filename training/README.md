@@ -52,6 +52,40 @@ python -m training.train --data training/data.yaml --epochs 80 --imgsz 640
   l'annotation. Sinon on revoit le sourcing / l'équilibrage avant d'investir.
 - Approche bornée : ne PAS sur-annoter avant d'avoir ce premier signal.
 
+### Résultat batch 1 (2026-05-29)
+NO-GO mAP50 **0.324** mais **méthode validée** : `standard` mAP50 **0.80**, `pmr`
+**0.50** (15 inst.), `recharge`/`livraison` **0** (3 et 1 inst.). Le NO-GO vient
+de la **famine des classes rares**, pas du pipeline. → Levier = plus de données
+sur **recharge / livraison / pmr**.
+
+## Batches suivants (accumulation + types rares)
+
+Le dataset s'**accumule** : on ajoute des frames sans repartir de zéro.
+
+1. **Filmer en CIBLANT les types rares** : chercher activement des places
+   **recharge** (bornes), **livraison** (zones jaunes), **PMR** (picto bleu).
+   1080p, de près, places vides de préférence, jour/sec.
+2. **Archiver les vidéos déjà traitées** pour ne pas les re-extraire : déplacer
+   les `.mp4` de batch 1 dans `raw_videos/_done_batch1/` (prepare_dataset ne
+   scanne pas les sous-dossiers).
+3. **Extraire le nouveau batch dans un dossier dédié** :
+   ```bash
+   python -m training.prepare_dataset --videos training/raw_videos \
+       --out training/dataset/images/_to_annotate_batch2 --every-seconds 2.0
+   ```
+4. **Annoter ce batch** sous CVAT (nouvelle tâche, mêmes labels OBB), exporter.
+5. **Split en accumulation** : `split_dataset.py` **ajoute** au dataset existant
+   (les fichiers batch 1 dans `dataset/train|val` restent ; noms uniques car
+   horodatés). Les coords hors [0,1] sont **clampées** (aucune image perdue).
+   ```bash
+   python -m training.split_dataset --images <export>/images --labels <export>/labels --val-ratio 0.2
+   ```
+6. **Ré-entraîner** sur le dataset combiné (`train.py`) et comparer le mAP +
+   surtout le **rappel par classe** des types rares.
+
+Objectif intermédiaire : amener `recharge`, `livraison`, `pmr` à **≥ 20-30
+instances chacune** avant d'espérer un mAP50 global ≥ 0.50.
+
 ## Livraison du détecteur (après go)
 
 1. Copier `best.pt`, noter son **SHA-256**.
