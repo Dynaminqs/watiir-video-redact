@@ -27,6 +27,24 @@ fallback équivalent.
 3. Service_role key Supabase staging ou prod (Dashboard → Settings → API).
 4. `scw` CLI installée + configurée (`scw init`).
 
+## Variables d'environnement
+
+Le worker lit **toute** sa config depuis l'env (`worker/settings.py`, fail-fast si une variable requise manque).
+
+| Variable | Requis | Défaut | Rôle |
+|---|---|---|---|
+| `SUPABASE_URL` | ✅ | — | URL du projet Supabase EU |
+| `SUPABASE_SERVICE_ROLE_KEY` | ✅ | — | Clé secrète serveur. **Depuis la bascule des clés (cf. ADR-009 WATIIR), utiliser la clé `sb_secret_*`** — pas la legacy JWT (rejetée par GoTrue). Le worker n'appelle que PostgREST/Edge Functions/Storage. |
+| `POLL_INTERVAL_IDLE_S` | — | `30` | Sleep entre polls quand la file est vide |
+| `MAX_VIDEO_DURATION_S` | — | `600` | Hard cap durée vidéo (rejet au-delà) |
+| `REQUEST_TIMEOUT_S` | — | `30.0` | Timeout HTTP vers Supabase |
+| `WORK_DIR` | — | `/tmp/watiir-redact-work` | Dossier temp (volume persistant conseillé) |
+| `MODELS_DIR` | — | `/app/models` (image) | Dossier des poids ML |
+| `FACE_MODEL_PATH` / `PLATE_MODEL_PATH` | — | `<models>/model.pt` / `best.pt` | Modèles de floutage (`PLATE_MODEL_PATH=none` → mode face-only dégradé) |
+| `SPOT_DETECTOR` | — | `stub` | Détecteur de places (rail 2) : `stub` (défaut) ou `yolov8` — cf. section dédiée |
+| `SPOT_DETECTOR_CHECKPOINT` | si `yolov8` | — | Chemin du `.pt` (dans l'image : `/app/models/spot_detector.pt`) |
+| `SPOT_DETECTOR_MODEL_VERSION` | — | dérivé du nom de fichier | Tracé jusqu'au staging pour audit (ex. `yolov8-spots-poc-v1`) |
+
 ## Déploiement on-demand (recommandation V4.0)
 
 Le worker peut être lancé à la demande en réponse à une alerte sur la
@@ -70,7 +88,38 @@ scw instance server delete "$SERVER_ID" with-ip=true with-volumes=all
 
 ⚠ **Secrets** : ne pas commiter `SUPABASE_SERVICE_ROLE_KEY` dans des fichiers
 sur disque. Préférer Scaleway Secret Manager ou un wrapper qui injecte la
-clé via `--env-file` chargé depuis un coffre.
+clé via `--env-file` chargé depuis un coffre. **Valeur attendue = la clé
+`sb_secret_*`** (la legacy `service_role` JWT est rejetée par GoTrue depuis la
+bascule des clés — cf. ADR-009 côté WATIIR).
+
+## Détection de places (rail 2) — activer le modèle
+
+L'étage **détection** (`claim_next_pending_detection` → `notify-detection-complete`)
+tourne avec un détecteur **pluggable** (`SPOT_DETECTOR`) :
+
+- **`stub` (défaut)** — `StubDetector`, sorties déterministes. Valide la plomberie
+  E2E (création de candidats → modération) **sans modèle ML**. À garder tant
+  qu'un checkpoint n'est pas validé.
+- **`yolov8`** — `Yolov8SpotDetector`, modèle YOLOv8-OBB fine-tuné. Le binaire est
+  **déjà dans l'image** (`models/download.py` le récupère au build depuis la
+  GitHub Release, pinné par sha256 dans `manifest.json`) → présent à
+  `/app/models/spot_detector.pt`.
+
+Activation (ajouter au `docker run`) :
+
+```bash
+  -e SPOT_DETECTOR=yolov8 \
+  -e SPOT_DETECTOR_CHECKPOINT=/app/models/spot_detector.pt \
+  -e SPOT_DETECTOR_MODEL_VERSION=yolov8-spots-poc-v1 \
+```
+
+⚠ **Staging d'abord** : le 1er checkpoint (`spot-detector-poc-v1`, mAP50 val 0.771)
+est un **POC** validé sur un petit jeu (chiffres bruités, pas « production »).
+L'activer **en staging** d'abord, vérifier le bout-en-bout (candidats détectés →
+modération humaine `pending_moderation`), surveiller le **rappel par classe**
+(`recharge`/`livraison`/`pmr`) avant tout passage prod. Le `model_version` est
+tracé jusqu'au staging pour corréler qualité ↔ version. Sans ces variables, le
+worker reste sur `stub` (aucun risque qualité).
 
 ## Déploiement permanent (V4.1+ — volumes élevés)
 
