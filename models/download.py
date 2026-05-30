@@ -4,8 +4,11 @@ Lancé AU BUILD Docker (cf. Dockerfile) — pas au runtime. Le container final
 est auto-suffisant et peut tourner sans accès Internet sortant.
 
 Workflow :
-  1. Pour chaque modèle du manifest, fetch via huggingface_hub.hf_hub_download
-     en epinglant `revision` (commit_hash si présent, sinon main).
+  1. Pour chaque modèle du manifest, fetch selon sa `source` :
+     - `huggingface` → huggingface_hub.hf_hub_download (revision épinglée) ;
+     - `github_release` / autre avec `download_url` → téléchargement direct
+       (httpx streaming) — utilisé par nos modèles internes fine-tunés
+       (ex. `spot_detector`, publié en GitHub Release).
   2. Calcule SHA-256 et compare au manifest.json.
   3. Si commit_hash ou sha256 est null dans le manifest → MODE BOOTSTRAP :
      on imprime les valeurs mesurées (à coller dans le manifest) puis on
@@ -27,7 +30,6 @@ from pathlib import Path
 
 from huggingface_hub import hf_hub_download
 
-
 MANIFEST_PATH = Path(__file__).parent / "manifest.json"
 MODELS_DIR = Path(__file__).parent
 
@@ -43,9 +45,34 @@ def sha256_of(path: Path, chunk_size: int = 1 << 20) -> str:
     return h.hexdigest()
 
 
+def _verify_sha(spec_key: str, spec: dict, actual_sha: str, actual_size: int, bootstrap: bool) -> dict:
+    """Compare le sha256 mesuré au manifest. Retourne le spec (mis à jour en
+    mode bootstrap si sha256 était absent)."""
+    print(f"  size: {actual_size:,} bytes")
+    print(f"  sha256: {actual_sha}")
+    expected_sha = spec.get("sha256")
+    if expected_sha is None:
+        if not bootstrap:
+            raise RuntimeError(
+                f"[{spec_key}] sha256 absent du manifest et --bootstrap non utilisé. "
+                f"Re-lance avec --bootstrap pour figer : sha256={actual_sha}"
+            )
+        print(f"  [bootstrap] sha256 enregistré : {actual_sha}")
+        return {**spec, "sha256": actual_sha}
+    if expected_sha != actual_sha:
+        raise RuntimeError(
+            f"[{spec_key}] MISMATCH sha256\n"
+            f"  attendu : {expected_sha}\n"
+            f"  reçu    : {actual_sha}\n"
+            f"Le fichier a probablement changé. Vérifier manuellement avant "
+            f"de mettre à jour le manifest."
+        )
+    print("  sha256 OK")
+    return spec
+
+
 def fetch_one(spec_key: str, spec: dict, bootstrap: bool) -> dict:
-    """Fetch un modèle et vérifie son intégrité. Retourne le dict mis à jour
-    (utile en mode bootstrap pour ré-écrire le manifest)."""
+    """Fetch un modèle HuggingFace et vérifie son intégrité."""
     repo_id = spec["repo_id"]
     filename = spec["filename"]
     revision = spec.get("commit_hash") or spec.get("revision") or "main"
@@ -59,33 +86,25 @@ def fetch_one(spec_key: str, spec: dict, bootstrap: bool) -> dict:
             local_dir=str(MODELS_DIR),
         )
     )
-    actual_size = local_path.stat().st_size
-    actual_sha = sha256_of(local_path)
+    return _verify_sha(spec_key, spec, sha256_of(local_path), local_path.stat().st_size, bootstrap)
 
-    print(f"  size: {actual_size:,} bytes")
-    print(f"  sha256: {actual_sha}")
 
-    expected_sha = spec.get("sha256")
-    if expected_sha is None:
-        if not bootstrap:
-            raise RuntimeError(
-                f"[{spec_key}] sha256 absent du manifest et --bootstrap non utilisé. "
-                f"Re-lance avec --bootstrap pour figer : sha256={actual_sha}"
-            )
-        print(f"  [bootstrap] sha256 enregistré : {actual_sha}")
-        spec = {**spec, "sha256": actual_sha}
-    elif expected_sha != actual_sha:
-        raise RuntimeError(
-            f"[{spec_key}] MISMATCH sha256\n"
-            f"  attendu : {expected_sha}\n"
-            f"  reçu    : {actual_sha}\n"
-            f"Le fichier sur HF a probablement changé. Vérifier manuellement avant "
-            f"de mettre à jour le manifest."
-        )
-    else:
-        print("  sha256 ✓")
+def fetch_url(spec_key: str, spec: dict, bootstrap: bool) -> dict:
+    """Fetch un binaire depuis une URL directe (ex. GitHub Release : nos modèles
+    internes fine-tunés) en streaming, puis vérifie son intégrité."""
+    import httpx
 
-    return spec
+    url = spec["download_url"]
+    dest = MODELS_DIR / spec["filename"]
+    print(f"[{spec_key}] download {url} ...", flush=True)
+    h = hashlib.sha256()
+    with httpx.stream("GET", url, follow_redirects=True, timeout=60.0) as resp:
+        resp.raise_for_status()
+        with dest.open("wb") as f:
+            for chunk in resp.iter_bytes(1 << 20):
+                f.write(chunk)
+                h.update(chunk)
+    return _verify_sha(spec_key, spec, h.hexdigest(), dest.stat().st_size, bootstrap)
 
 
 def main() -> int:
@@ -102,15 +121,21 @@ def main() -> int:
         return 2
 
     manifest = json.loads(MANIFEST_PATH.read_text(encoding="utf-8"))
-    keys = ["face_detector", "license_plate_detector"]
     updated = False
 
-    for key in keys:
-        if key not in manifest:
-            print(f"[skip] {key} absent du manifest.", file=sys.stderr)
+    # Dispatch par source : HuggingFace (face/plate) ou URL directe / release
+    # GitHub (spot_detector interne). Les entrées sans modèle téléchargeable
+    # (tracker, runtime, $schema, version, description) sont ignorées.
+    for key, spec in manifest.items():
+        if not isinstance(spec, dict):
             continue
-        spec = manifest[key]
-        new_spec = fetch_one(key, spec, bootstrap=args.bootstrap)
+        source = spec.get("source")
+        if source == "huggingface":
+            new_spec = fetch_one(key, spec, bootstrap=args.bootstrap)
+        elif spec.get("download_url"):
+            new_spec = fetch_url(key, spec, bootstrap=args.bootstrap)
+        else:
+            continue
         if new_spec != spec:
             manifest[key] = new_spec
             updated = True

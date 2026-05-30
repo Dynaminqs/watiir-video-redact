@@ -25,7 +25,9 @@
     "notes": "POC 2026-05-27 : 174 unique plates sur le même corpus, rappel visuel 100% sur plaques FR malgré modèle non-FR-specific. À forker sur un repo interne Dynaminqs pour résilience long terme (le repo HF est communautaire)."
   },
   "spot_detector": {
-    "source": "internal",
+    "source": "github_release",
+    "download_url": "https://github.com/Dynaminqs/watiir-video-redact/releases/download/spot-detector-poc-v1/spot_detector.pt",
+    "release_tag": "spot-detector-poc-v1",
     "filename": "spot_detector.pt",
     "task": "obb",
     "base_model": "yolov8n-obb.pt",
