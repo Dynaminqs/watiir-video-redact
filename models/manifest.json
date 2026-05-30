@@ -1,6 +1,6 @@
 {
   "$schema": "./manifest.schema.json",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Pinning des modèles ML utilisés par watiir-video-redact V4.0. Toute MAJ exige bump de version + nouvelle entrée commit_hash/sha256.",
   "face_detector": {
     "source": "huggingface",
@@ -23,6 +23,18 @@
     "license": "AGPL-3.0",
     "size_bytes_approx": 6543360,
     "notes": "POC 2026-05-27 : 174 unique plates sur le même corpus, rappel visuel 100% sur plaques FR malgré modèle non-FR-specific. À forker sur un repo interne Dynaminqs pour résilience long terme (le repo HF est communautaire)."
+  },
+  "spot_detector": {
+    "source": "internal",
+    "filename": "spot_detector.pt",
+    "task": "obb",
+    "base_model": "yolov8n-obb.pt",
+    "classes": ["livraison", "pmr", "recharge", "standard"],
+    "sha256": "78637cbbaf19d531256c96e9b628196f10137e53000b8aa0d7086697e0c8a51c",
+    "license": "AGPL-3.0",
+    "size_bytes_approx": 6563027,
+    "model_version": "yolov8-spots-poc-v1",
+    "notes": "POC modèle places (2026-05-30). Fine-tune YOLOv8n-OBB sur dataset interne annoté (197 img, 281 instances). Val (40 img) : mAP50 0.771, mAP50-95 0.575 ; par classe mAP50 recharge 0.842 / pmr 0.779 / livraison 0.775 / standard 0.689. Activer via SPOT_DETECTOR=yolov8 + SPOT_DETECTOR_CHECKPOINT. CAVEAT : val set petit (chiffres bruités, pas production). HÉBERGEMENT À FAIRE : le binaire n'est pas dans le repo (gitignore *.pt) — uploader sur release asset / object storage interne pour distribution staging/prod (download.py à étendre)."
   },
   "tracker": {
     "name": "ByteTrack",
