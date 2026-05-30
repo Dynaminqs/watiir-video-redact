@@ -131,8 +131,11 @@ def test_collect_untracked_when_no_ids():
     best: dict[int, RawDetection] = {}
     untracked: list[RawDetection] = []
     Yolov8SpotDetector._collect(
-        _results(_FakeObb([_square(0, 0, 0.1, 0.1), _square(0.5, 0.5, 0.6, 0.6)],
-                          [1, 2], [0.7, 0.8], None)),
+        _results(
+            _FakeObb(
+                [_square(0, 0, 0.1, 0.1), _square(0.5, 0.5, 0.6, 0.6)], [1, 2], [0.7, 0.8], None
+            )
+        ),
         500,
         best,
         untracked,

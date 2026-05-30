@@ -8,8 +8,8 @@ par défaut (run avec WATIIR_REDACT_E2E=1).
 from __future__ import annotations
 
 import os
+from collections.abc import Iterator
 from pathlib import Path
-from typing import Iterator
 from unittest.mock import MagicMock
 
 import pytest
@@ -39,7 +39,6 @@ def fake_yolo_result_factory():
         import numpy as np
 
         if not boxes_xyxy:
-            xyxy = np.empty((0, 4))
             boxes = None
         else:
             xyxy_np = np.array(boxes_xyxy, dtype=float)
@@ -52,7 +51,6 @@ def fake_yolo_result_factory():
                 boxes.id.cpu = lambda: MagicMock(numpy=lambda: ids_np)
             else:
                 boxes.id = None
-            xyxy = xyxy_np
             # Surcharge .xyxy.cpu().numpy()
             inner_cpu = MagicMock()
             inner_cpu.numpy = lambda: xyxy_np

@@ -21,7 +21,6 @@ from worker.main import (
 from worker.settings import WorkerSettings
 from worker.supabase_client import ClaimedVideo
 
-
 # ─── _build_redacted_bucket_path ────────────────────────────────────────────
 
 
@@ -75,6 +74,7 @@ def test_process_one_video_success_flow(
 ):
     """Flow nominal : download → process → upload → notify_redacted."""
     client = MagicMock()
+
     # Simule download : crée le fichier local
     def _fake_download(path: str, dest: Path) -> Path:
         dest.write_bytes(b"fake video bytes")

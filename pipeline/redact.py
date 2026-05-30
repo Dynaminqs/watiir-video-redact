@@ -11,7 +11,6 @@ from __future__ import annotations
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
 
 import cv2
 import numpy as np
@@ -25,10 +24,10 @@ class RedactionModels:
     """2 modèles chargés en mémoire (face + plate)."""
 
     face: YOLO
-    plate: Optional[YOLO]
+    plate: YOLO | None
 
 
-def load_models(face_model_path: Path, plate_model_path: Optional[Path]) -> RedactionModels:
+def load_models(face_model_path: Path, plate_model_path: Path | None) -> RedactionModels:
     """Charge les modèles depuis disque. `plate_model_path=None` → mode face-only
     (POC a validé que c'est acceptable en dégradé, pas en V4.0 prod)."""
     face = YOLO(str(face_model_path))

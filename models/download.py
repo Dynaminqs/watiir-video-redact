@@ -45,7 +45,9 @@ def sha256_of(path: Path, chunk_size: int = 1 << 20) -> str:
     return h.hexdigest()
 
 
-def _verify_sha(spec_key: str, spec: dict, actual_sha: str, actual_size: int, bootstrap: bool) -> dict:
+def _verify_sha(
+    spec_key: str, spec: dict, actual_sha: str, actual_size: int, bootstrap: bool
+) -> dict:
     """Compare le sha256 mesuré au manifest. Retourne le spec (mis à jour en
     mode bootstrap si sha256 était absent)."""
     print(f"  size: {actual_size:,} bytes")

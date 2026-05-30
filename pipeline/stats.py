@@ -40,7 +40,7 @@ class VideoStats:
     @property
     def real_time_factor(self) -> float:
         """Rapport temps de traitement / durée vidéo. < 1.0 = plus rapide que
-        temps réel. POC validé 2026-05-27 : 0.66× sur T4 free Colab."""
+        temps réel. POC validé 2026-05-27 : 0.66x sur T4 free Colab."""
         return self.process_s / self.duration_s if self.duration_s > 0 else 0.0
 
     @property

@@ -11,7 +11,6 @@ import pytest
 
 from pipeline.redact import blur_boxes
 
-
 # ─── blur_boxes ─────────────────────────────────────────────────────────────
 
 

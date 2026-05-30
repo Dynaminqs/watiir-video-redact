@@ -127,8 +127,10 @@ def main() -> None:
             except (ValueError, IndexError):
                 pass
 
-    print(f"[OK] split : {counts['train']} train / {counts['val']} val "
-          f"(val-ratio={args.val_ratio}, seed={args.seed})")
+    print(
+        f"[OK] split : {counts['train']} train / {counts['val']} val "
+        f"(val-ratio={args.val_ratio}, seed={args.seed})"
+    )
     if orphan_labels:
         print(f"[warn] {orphan_labels} label(s) sans image correspondante - ignores")
     if empty_labels:
@@ -138,8 +140,10 @@ def main() -> None:
         print(f"  {c:>10} : {class_hist[c]}")
     rares = [c for c in ("livraison", "pmr", "recharge") if class_hist[c] < 20]
     if rares:
-        print(f"[warn] classes rares sous-representees (<20 instances) : {', '.join(rares)} "
-              "- surveiller le rappel par classe au train (cf. dashboard eval J).")
+        print(
+            f"[warn] classes rares sous-representees (<20 instances) : {', '.join(rares)} "
+            "- surveiller le rappel par classe au train (cf. dashboard eval J)."
+        )
     print("\nPrêt pour : python -m training.train --data training/data.yaml")
 
 
