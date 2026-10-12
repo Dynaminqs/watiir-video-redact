@@ -16,6 +16,7 @@ import cv2
 import numpy as np
 from ultralytics import YOLO
 
+from pipeline.encode import open_writer
 from pipeline.stats import VideoStats
 
 
@@ -99,8 +100,7 @@ def process_video(
         duration_s=duration_s,
     )
 
-    fourcc = cv2.VideoWriter_fourcc(*"mp4v")
-    writer = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
+    writer = open_writer(output_path, fps, width, height)
     if not writer.isOpened():
         cap.release()
         raise RuntimeError(f"impossible d'ouvrir le writer pour {output_path}")
